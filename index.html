@@ -1,0 +1,655 @@
+<title>J.A.R.V.I.S. HUD</title>
+<meta name="description" content="Animiertes Iron-Man-Style Desktop-HUD mit Jarvis-Konsole.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oxanium:wght@300;500;700&family=Rajdhani:wght@400;500;600&family=Share+Tech+Mono&display=swap">
+<style>
+  /* Bewusst nur ein (dunkles) Thema: ein HUD ist eine eigene visuelle Welt. */
+  :root {
+    color-scheme: dark;
+    --ground: #01080c;
+    --ground-2: #03141b;
+    --line: #0d4a55;
+    --line-soft: rgba(34, 227, 242, 0.14);
+    --accent: #22e3f2;
+    --accent-rgb: 34, 227, 242;
+    --bright: #c8fdff;
+    --text: #9fe9f0;
+    --dim: #4f97a1;
+    --alert: #ff3a48;
+    --ok: #3cf2a0;
+    --glow: 0 0 6px rgba(var(--accent-rgb), .75), 0 0 18px rgba(var(--accent-rgb), .35);
+    --display: "Oxanium", "Rajdhani", "Segoe UI", system-ui, sans-serif;
+    --label: "Rajdhani", "Segoe UI", system-ui, sans-serif;
+    --mono: "Share Tech Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  :root.alert-mode { --accent: #ff4d5a; --accent-rgb: 255, 77, 90; --text: #ffc2c6; --bright: #ffe3e5; --dim: #a8575e; --line: #5a1c22; }
+
+  html, body { min-height: 100%; }
+  body {
+    background:
+      radial-gradient(ellipse 70% 55% at 50% 45%, rgba(var(--accent-rgb), .10), transparent 70%),
+      linear-gradient(180deg, var(--ground-2), var(--ground) 60%);
+    background-color: var(--ground);
+    color: var(--text);
+    font: 500 15px/1.35 var(--label);
+    padding-inline: 16px;
+    padding-block: 10px 18px;
+    overflow-x: hidden;
+  }
+  #grid-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: .55; }
+  .hud { position: relative; z-index: 1; max-width: 1480px; margin-inline: auto; display: grid; gap: 14px; }
+
+  /* ---------- Kopfzeile: Monatstage ---------- */
+  .days { display: flex; gap: 2px; font: 500 15px var(--display); color: var(--dim); overflow-x: auto; scrollbar-width: none; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+  .days::-webkit-scrollbar { display: none; }
+  .days span { flex: 1 0 30px; text-align: center; padding: 3px 0; font-variant-numeric: tabular-nums; }
+  .days span.past { color: rgba(var(--accent-rgb), .55); }
+  .days span.today { background: var(--accent); color: var(--ground); border-radius: 3px; text-shadow: none; font-weight: 700; }
+  .topline { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; font: 500 13px var(--mono); color: var(--dim); letter-spacing: .08em; text-transform: uppercase; }
+  .topline strong { color: var(--bright); font-weight: 400; }
+
+  /* ---------- Layout ---------- */
+  .main { display: grid; grid-template-columns: minmax(230px, 1fr) minmax(0, 2.3fr) minmax(250px, 1.1fr); gap: 18px; align-items: start; }
+  .col { display: grid; gap: 14px; min-width: 0; }
+  @media (max-width: 1080px) {
+    .main { grid-template-columns: 1fr 1fr; }
+    .center { grid-column: 1 / -1; order: -1; }
+  }
+  @media (max-width: 640px) { .main { grid-template-columns: 1fr; } }
+
+  .panel { position: relative; border: 1px solid var(--line); background: linear-gradient(180deg, rgba(var(--accent-rgb), .045), rgba(var(--accent-rgb), .01)); padding: 12px 14px; clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px)); }
+  .panel::before { content: ""; position: absolute; left: 0; top: 0; width: 34px; height: 2px; background: var(--accent); box-shadow: var(--glow); }
+  .ptitle { display: flex; justify-content: space-between; align-items: center; font: 600 12px var(--label); letter-spacing: .22em; text-transform: uppercase; color: var(--dim); margin-bottom: 8px; }
+  .tag { font: 400 10px var(--mono); letter-spacing: .1em; padding: 1px 6px; border: 1px solid var(--line); color: var(--dim); }
+  .tag.live { border-color: rgba(60, 242, 160, .5); color: var(--ok); }
+
+  .glow { color: var(--bright); text-shadow: var(--glow); }
+  .num { font-family: var(--display); font-variant-numeric: tabular-nums; }
+
+  /* ---------- Ringe (SVG) ---------- */
+  .ring { display: block; width: 100%; height: auto; max-width: 100%; overflow: visible; }
+  .ring .track { fill: none; stroke: rgba(var(--accent-rgb), .13); }
+  .ring .bar { fill: none; stroke: var(--accent); stroke-linecap: butt; filter: drop-shadow(0 0 4px rgba(var(--accent-rgb), .8)); transition: stroke-dashoffset .8s cubic-bezier(.2,.8,.2,1); }
+  .ring .tick { stroke: rgba(var(--accent-rgb), .45); }
+  .ring text { fill: var(--bright); font-family: var(--display); text-anchor: middle; }
+  .ring .sub { fill: var(--dim); font-family: var(--label); letter-spacing: .15em; }
+
+  .date-block { display: grid; grid-template-columns: 1fr; justify-items: center; }
+  .date-block .ring { max-width: 210px; }
+  .clockline { display: flex; justify-content: space-between; align-items: baseline; border: 1px solid var(--line); padding: 6px 10px; margin-top: 6px; width: 100%; }
+  .clockline .num { font-size: 26px; letter-spacing: .08em; }
+  .clockline small { font: 14px var(--mono); color: var(--dim); }
+
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font-size: 15px; }
+  .kv dt { color: var(--dim); }
+  .kv dd { margin: 0; text-align: right; color: var(--bright); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .meter { height: 6px; background: rgba(var(--accent-rgb), .12); margin-top: 8px; position: relative; overflow: hidden; }
+  .meter i { position: absolute; inset: 0 auto 0 0; background: repeating-linear-gradient(90deg, var(--accent) 0 6px, transparent 6px 8px); box-shadow: var(--glow); transition: width .8s; }
+
+  .energy { display: grid; grid-template-columns: 110px 1fr; gap: 14px; align-items: center; }
+
+  /* ---------- Zentrum ---------- */
+  .center { display: grid; gap: 14px; }
+  .gauges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-items: center; }
+  .gauges .ring { max-width: 170px; margin-inline: auto; }
+  .reactor-wrap { position: relative; aspect-ratio: 1 / 0.7; max-width: 100%; }
+  #reactor { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .launch { position: absolute; inset: 0; pointer-events: none; }
+  .launch button { pointer-events: auto; position: absolute; transform: translate(-100%, -50%); display: flex; align-items: center; gap: 8px; background: none; border: 0; color: var(--text); font: 600 15px var(--label); letter-spacing: .04em; cursor: pointer; padding: 4px 6px; white-space: nowrap; }
+  .launch button::after { content: ""; width: 12px; height: 12px; border-radius: 50%; background: rgba(var(--accent-rgb), .35); box-shadow: 0 0 0 2px rgba(var(--accent-rgb), .6); transition: background .2s, box-shadow .2s; }
+  .launch button:hover, .launch button:focus-visible { color: var(--bright); text-shadow: var(--glow); outline: none; }
+  .launch button:hover::after, .launch button:focus-visible::after { background: var(--accent); box-shadow: 0 0 0 2px var(--accent), 0 0 14px var(--accent); }
+  .reactor-label { position: absolute; left: 50%; bottom: 2%; transform: translateX(-50%); font: 700 clamp(14px, 2.2vw, 22px) var(--display); letter-spacing: .32em; color: rgba(var(--accent-rgb), .55); font-style: italic; white-space: nowrap; }
+  @media (max-width: 640px) { .launch button { font-size: 12px; gap: 5px; } .launch button::after { width: 9px; height: 9px; } }
+
+  /* ---------- Konsole ---------- */
+  .console { display: grid; gap: 8px; }
+  .log { height: 190px; overflow-y: auto; font: 14px/1.45 var(--mono); display: grid; align-content: start; gap: 6px; padding-right: 4px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+  .log p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .log .who { color: var(--dim); margin-right: 6px; }
+  .log .me { color: var(--text); }
+  .log .ai { color: var(--bright); }
+  .log .sys { color: var(--dim); font-size: 12.5px; }
+  .log .err { color: var(--alert); }
+  .cmd { display: flex; gap: 8px; }
+  .cmd input { flex: 1; min-width: 0; background: rgba(var(--accent-rgb), .05); border: 1px solid var(--line); color: var(--bright); font: 15px var(--mono); padding: 8px 10px; caret-color: var(--accent); }
+  .cmd input::placeholder { color: var(--dim); }
+  .cmd input:focus { outline: none; border-color: var(--accent); box-shadow: inset 0 0 12px rgba(var(--accent-rgb), .2); }
+  .btn { background: transparent; border: 1px solid var(--accent); color: var(--accent); font: 600 13px var(--label); letter-spacing: .18em; text-transform: uppercase; padding: 6px 12px; cursor: pointer; }
+  .btn:hover, .btn:focus-visible { background: var(--accent); color: var(--ground); outline: none; }
+  .btn[aria-pressed="true"] { background: rgba(var(--accent-rgb), .22); color: var(--bright); }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips button { background: none; border: 1px solid var(--line); color: var(--dim); font: 13px var(--mono); padding: 2px 8px; cursor: pointer; }
+  .chips button:hover, .chips button:focus-visible { color: var(--bright); border-color: var(--accent); outline: none; }
+
+  /* ---------- Rechts: Wetter ---------- */
+  .now { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; }
+  .now .temp { font: 300 48px/1 var(--display); }
+  .moon { width: 74px; height: 74px; border-radius: 50%; background: radial-gradient(circle at 38% 35%, #e9ffff, rgba(var(--accent-rgb), .8) 45%, rgba(var(--accent-rgb), .15) 72%); box-shadow: 0 0 22px rgba(var(--accent-rgb), .6); }
+  .forecast { display: grid; gap: 0; }
+  .fday { display: grid; grid-template-columns: 1fr 40px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line-soft); }
+  .fday b { display: block; color: var(--bright); font: 600 16px var(--label); }
+  .fday span { color: var(--dim); font-size: 13.5px; display: block; }
+  .fday svg { width: 40px; height: 30px; }
+  .fday svg * { fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-linecap: round; }
+
+  .feed { display: grid; gap: 2px; }
+  .feed button { text-align: right; background: none; border: 0; border-right: 2px solid transparent; color: var(--text); font: 500 16px var(--label); padding: 5px 10px 5px 0; cursor: pointer; }
+  .feed button:hover, .feed button:focus-visible { color: var(--bright); border-right-color: var(--accent); text-shadow: var(--glow); outline: none; }
+
+  /* ---------- Netz ---------- */
+  .net canvas { display: block; width: 100%; height: 70px; }
+  .netrow { display: flex; justify-content: space-between; font: 13px var(--mono); color: var(--dim); }
+  .netrow b { color: var(--bright); font-weight: 400; }
+
+  .scan { position: fixed; inset: 0; pointer-events: none; z-index: 2; background: repeating-linear-gradient(180deg, rgba(255,255,255,.018) 0 1px, transparent 1px 3px); }
+  @media (prefers-reduced-motion: reduce) { .ring .bar, .meter i { transition: none; } }
+</style>
+
+<canvas id="grid-bg" aria-hidden="true"></canvas>
+<div class="scan" aria-hidden="true"></div>
+
+<div class="hud">
+  <div>
+    <div class="days" id="days" aria-label="Tage dieses Monats"></div>
+    <div class="topline"><span>Stark Industries · Mk&nbsp;VII Interface</span><span><strong id="city">Berlin, DE</strong> · <span id="stamp"></span></span></div>
+  </div>
+
+  <div class="main">
+    <!-- ===== Links ===== -->
+    <div class="col">
+      <section class="panel date-block" aria-label="Datum und Uhrzeit">
+        <svg class="ring" viewBox="0 0 200 200" aria-hidden="true">
+          <circle class="track" cx="100" cy="100" r="88" stroke-width="10"></circle>
+          <circle class="bar" id="dayArc" cx="100" cy="100" r="88" stroke-width="10" transform="rotate(-90 100 100)"></circle>
+          <circle class="track" cx="100" cy="100" r="72" stroke-width="1.5"></circle>
+          <path d="M60 128 A48 48 0 0 0 140 128" fill="none" stroke="var(--accent)" stroke-width="2.5"></path>
+          <text id="monthName" x="100" y="72" font-size="17" class="sub">—</text>
+          <text id="dayNum" x="100" y="124" font-size="52" font-weight="700">—</text>
+        </svg>
+        <div class="clockline"><span class="num glow" id="clock">--:--</span><small id="secs">--</small><small id="weekday">—</small></div>
+      </section>
+
+      <section class="panel" aria-label="Speicher">
+        <div class="ptitle">Lokaler Speicher <span class="tag" id="diskTag">Browser</span></div>
+        <dl class="kv">
+          <dt>Kontingent</dt><dd id="quota">—</dd>
+          <dt>Belegt</dt><dd id="used">—</dd>
+          <dt>Kerne</dt><dd id="cores">—</dd>
+        </dl>
+        <div class="meter"><i id="diskBar" style="width:0%"></i></div>
+      </section>
+
+      <section class="panel" aria-label="Energie">
+        <div class="ptitle">Energie <span class="tag" id="battTag">Reaktor</span></div>
+        <div class="energy">
+          <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
+            <circle class="track" cx="60" cy="60" r="50" stroke-width="9"></circle>
+            <circle class="bar" id="battArc" cx="60" cy="60" r="50" stroke-width="9" transform="rotate(-90 60 60)"></circle>
+            <text x="60" y="62" font-size="24" font-weight="700" id="battPct">—</text>
+            <text x="60" y="80" font-size="10" class="sub" id="battState">—</text>
+          </svg>
+          <dl class="kv">
+            <dt>Laufzeit</dt><dd id="uptime">0 m</dd>
+            <dt>Protokoll</dt><dd id="logCount">0</dd>
+            <dt>Modus</dt><dd id="modeLbl">Normal</dd>
+          </dl>
+        </div>
+      </section>
+
+      <section class="panel" aria-label="Schnellbefehle">
+        <div class="ptitle">Operationen</div>
+        <div class="chips">
+          <button type="button" data-cmd="status">status</button>
+          <button type="button" data-cmd="alarm">alarm</button>
+          <button type="button" data-cmd="normal">normal</button>
+          <button type="button" data-cmd="vollbild">vollbild</button>
+          <button type="button" data-cmd="hilfe">hilfe</button>
+        </div>
+      </section>
+    </div>
+
+    <!-- ===== Zentrum ===== -->
+    <div class="col center">
+      <div class="gauges">
+        <svg class="ring" viewBox="0 0 160 160" aria-label="CPU-Last (simuliert)">
+          <circle class="track" cx="80" cy="80" r="66" stroke-width="12"></circle>
+          <circle class="bar" id="cpuArc" cx="80" cy="80" r="66" stroke-width="12" transform="rotate(-90 80 80)"></circle>
+          <circle class="track" cx="80" cy="80" r="52" stroke-width="2"></circle>
+          <text x="80" y="66" font-size="13" class="sub">CPU</text>
+          <text x="80" y="94" font-size="30" font-weight="700" id="cpuTxt">—</text>
+          <text x="80" y="112" font-size="10" class="sub">SIM</text>
+        </svg>
+        <svg class="ring" viewBox="0 0 160 160" aria-label="Uhr">
+          <circle class="track" cx="80" cy="80" r="66" stroke-width="3"></circle>
+          <circle class="bar" id="secArc" cx="80" cy="80" r="66" stroke-width="3" transform="rotate(-90 80 80)"></circle>
+          <circle class="track" cx="80" cy="80" r="56" stroke-width="12"></circle>
+          <circle class="bar" id="minArc" cx="80" cy="80" r="56" stroke-width="12" transform="rotate(-90 80 80)"></circle>
+          <text x="80" y="92" font-size="29" font-weight="500" id="bigClock">--:--</text>
+        </svg>
+        <svg class="ring" viewBox="0 0 160 160" aria-label="Arbeitsspeicher (simuliert)">
+          <circle class="track" cx="80" cy="80" r="66" stroke-width="12"></circle>
+          <circle class="bar" id="ramArc" cx="80" cy="80" r="66" stroke-width="12" transform="rotate(-90 80 80)"></circle>
+          <circle class="track" cx="80" cy="80" r="52" stroke-width="2"></circle>
+          <text x="80" y="66" font-size="13" class="sub">RAM</text>
+          <text x="80" y="94" font-size="30" font-weight="700" id="ramTxt">—</text>
+          <text x="80" y="112" font-size="10" class="sub" id="ramSub">SIM</text>
+        </svg>
+      </div>
+
+      <div class="reactor-wrap">
+        <canvas id="reactor" aria-hidden="true"></canvas>
+        <nav class="launch" id="launch" aria-label="Module"></nav>
+        <div class="reactor-label">STARK INDUSTRIES</div>
+      </div>
+
+      <section class="panel console" aria-label="Jarvis-Konsole">
+        <div class="ptitle">J.A.R.V.I.S. Konsole <span class="tag" id="aiTag">Lokal</span></div>
+        <div class="log" id="log" aria-live="polite"></div>
+        <form class="cmd" id="cmdForm" autocomplete="off">
+          <input id="cmdInput" name="cmd" aria-label="Befehl an Jarvis" placeholder="Frag Jarvis … z. B. „status“ oder „Wie spät ist es?“" maxlength="600">
+          <button class="btn" type="submit" id="sendBtn">Senden</button>
+          <button class="btn" type="button" id="voiceBtn" aria-pressed="false" title="Antworten vorlesen">Stimme</button>
+        </form>
+      </section>
+    </div>
+
+    <!-- ===== Rechts ===== -->
+    <div class="col">
+      <section class="panel" aria-label="Wetter">
+        <div class="ptitle">Wetter <span class="tag">Beispieldaten</span></div>
+        <div class="now">
+          <div>
+            <div class="temp glow num" id="tempNow">14°C</div>
+            <div style="color:var(--bright);font-size:17px">Klar</div>
+          </div>
+          <div class="moon" aria-hidden="true"></div>
+        </div>
+        <dl class="kv" style="margin-top:8px">
+          <dt>Luftfeuchte</dt><dd>71 %</dd>
+          <dt>Gefühlt</dt><dd>13 °C</dd>
+          <dt>Wind</dt><dd>3 m/s WNW</dd>
+          <dt>Sonnenaufgang</dt><dd id="sunrise">—</dd>
+          <dt>Sonnenuntergang</dt><dd id="sunset">—</dd>
+        </dl>
+        <div class="forecast" id="forecast" style="margin-top:10px"></div>
+      </section>
+
+      <section class="panel" aria-label="Module">
+        <div class="ptitle">Missionen</div>
+        <div class="feed" id="feed"></div>
+      </section>
+
+      <section class="panel net" aria-label="Netzwerk">
+        <div class="ptitle">Netzwerk <span class="tag">SIM</span></div>
+        <div class="netrow"><span>Download</span><b id="dl">—</b></div>
+        <canvas id="netDown" aria-hidden="true"></canvas>
+        <div class="netrow"><span>Upload</span><b id="ul">—</b></div>
+        <canvas id="netUp" aria-hidden="true"></canvas>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const LOCALE = "de-DE";
+  const started = Date.now();
+  const css = () => getComputedStyle(document.documentElement);
+  let ACC = "34, 227, 242";
+  const refreshAccent = () => { ACC = css().getPropertyValue("--accent-rgb").trim() || ACC; };
+
+  /* ---------- Ring-Helfer ---------- */
+  function setRing(el, frac) {
+    const r = +el.getAttribute("r"), c = 2 * Math.PI * r;
+    el.style.strokeDasharray = c;
+    el.style.strokeDashoffset = c * (1 - Math.max(0, Math.min(1, frac)));
+  }
+
+  /* ---------- Datum / Uhr ---------- */
+  function buildDays(now) {
+    const n = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const box = $("days"); box.textContent = "";
+    for (let d = 1; d <= n; d++) {
+      const s = document.createElement("span");
+      s.textContent = String(d).padStart(2, "0");
+      if (d < now.getDate()) s.className = "past";
+      if (d === now.getDate()) { s.className = "today"; s.setAttribute("aria-current", "date"); }
+      box.append(s);
+    }
+  }
+  let lastDay = -1;
+  function tickClock() {
+    const now = new Date();
+    if (now.getDate() !== lastDay) {
+      lastDay = now.getDate();
+      buildDays(now);
+      $("monthName").textContent = now.toLocaleDateString(LOCALE, { month: "long" }).toUpperCase();
+      $("dayNum").textContent = now.getDate();
+      $("weekday").textContent = now.toLocaleDateString(LOCALE, { weekday: "long" });
+      const dim = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      setRing($("dayArc"), now.getDate() / dim);
+      buildForecast(now);
+      sunTimes(now);
+    }
+    const hm = now.toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" });
+    $("clock").textContent = hm;
+    $("bigClock").textContent = hm;
+    $("secs").textContent = String(now.getSeconds()).padStart(2, "0");
+    setRing($("secArc"), now.getSeconds() / 60);
+    setRing($("minArc"), (now.getMinutes() + now.getSeconds() / 60) / 60);
+    $("stamp").textContent = "Aktualisiert " + now.toLocaleString(LOCALE, { dateStyle: "short", timeStyle: "short" });
+    const m = Math.floor((Date.now() - started) / 60000);
+    $("uptime").textContent = m < 60 ? m + " m" : Math.floor(m / 60) + " h " + (m % 60) + " m";
+  }
+
+  /* ---------- Sonnenzeiten (einfache Näherung, Berlin 52.5°N / 13.4°E) ---------- */
+  function sunTimes(d) {
+    const lat = 52.52 * Math.PI / 180, lng = 13.405;
+    const start = new Date(d.getFullYear(), 0, 0);
+    const doy = Math.floor((d - start) / 864e5);
+    const decl = 23.44 * Math.PI / 180 * Math.sin(2 * Math.PI * (284 + doy) / 365);
+    const ha = Math.acos(-Math.tan(lat) * Math.tan(decl)) * 180 / Math.PI;
+    const B = 2 * Math.PI * (doy - 81) / 364;
+    const eot = 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B);
+    const noonUTC = 720 - 4 * lng - eot; // Minuten
+    const toLocal = (min) => { const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), 0, Math.round(min))); return t.toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" }); };
+    $("sunrise").textContent = toLocal(noonUTC - 4 * ha);
+    $("sunset").textContent = toLocal(noonUTC + 4 * ha);
+  }
+
+  /* ---------- Vorhersage (Beispieldaten, an echte Wochentage gebunden) ---------- */
+  const ICONS = {
+    sun: '<circle cx="20" cy="15" r="6"/><path d="M20 3v3M20 24v3M8 15h3M29 15h3M11.5 6.5l2 2M26.5 21.5l2 2M11.5 23.5l2-2M26.5 8.5l2-2"/>',
+    cloud: '<path d="M11 24h18a6 6 0 0 0 0-12 8 8 0 0 0-15-2 6 6 0 0 0-3 14z"/>',
+    part: '<circle cx="14" cy="11" r="5"/><path d="M14 2v2M5 11h2M7.6 4.6l1.4 1.4M20.4 4.6L19 6"/><path d="M14 26h15a5 5 0 0 0 0-10 7 7 0 0 0-13-1 5 5 0 0 0-2 11z"/>',
+    rain: '<path d="M11 19h18a6 6 0 0 0 0-12 8 8 0 0 0-15-2 6 6 0 0 0-3 14z"/><path d="M14 23l-2 5M21 23l-2 5M28 23l-2 5"/>'
+  };
+  const SAMPLE = [["part", "Wechselnd bewölkt", 19, 11], ["sun", "Sonnig", 22, 12], ["cloud", "Bedeckt", 18, 10], ["rain", "Regen", 15, 9], ["part", "Heiter bis wolkig", 17, 8], ["rain", "Schauer", 14, 8], ["sun", "Klar", 16, 7]];
+  function buildForecast(now) {
+    const box = $("forecast"); box.textContent = "";
+    for (let i = 0; i < 6; i++) {
+      const d = new Date(now); d.setDate(d.getDate() + i);
+      const [ic, desc, hi, lo] = SAMPLE[(d.getDate() + i) % SAMPLE.length];
+      const row = document.createElement("div"); row.className = "fday";
+      const name = i === 0 ? "Heute Nacht" : i === 1 ? "Morgen" : d.toLocaleDateString(LOCALE, { weekday: "long" });
+      row.innerHTML = `<div><b></b><span></span></div><svg viewBox="0 0 40 30" aria-hidden="true">${ICONS[ic]}</svg>`;
+      row.querySelector("b").textContent = name;
+      row.querySelector("span").textContent = `${d.toLocaleDateString(LOCALE, { day: "numeric", month: "short" })} · ${hi}° / ${lo}° · ${desc}`;
+      box.append(row);
+    }
+  }
+
+  /* ---------- Speicher / Energie (echte Browser-Werte, wo verfügbar) ---------- */
+  const fmtBytes = (b) => { const u = ["B", "KB", "MB", "GB", "TB"]; let i = 0; while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; } return b.toFixed(b < 10 && i ? 1 : 0) + " " + u[i]; };
+  async function storage() {
+    $("cores").textContent = navigator.hardwareConcurrency ? navigator.hardwareConcurrency + " Threads" : "—";
+    try {
+      const e = await navigator.storage.estimate();
+      $("quota").textContent = fmtBytes(e.quota || 0);
+      $("used").textContent = fmtBytes(e.usage || 0);
+      $("diskBar").style.width = Math.max(2, (e.usage / e.quota) * 100) + "%";
+      $("diskTag").textContent = "Live"; $("diskTag").classList.add("live");
+    } catch { $("quota").textContent = "n. v."; $("used").textContent = "n. v."; }
+  }
+  let battery = null;
+  function renderBattery() {
+    const lvl = battery ? battery.level : 1;
+    setRing($("battArc"), lvl);
+    $("battPct").textContent = Math.round(lvl * 100) + "%";
+    $("battState").textContent = battery ? (battery.charging ? "LÄDT" : "AKKU") : "ARC · STABIL";
+  }
+  async function energy() {
+    renderBattery();
+    try {
+      if (!navigator.getBattery) return;
+      battery = await navigator.getBattery();
+      $("battTag").textContent = "Live"; $("battTag").classList.add("live");
+      battery.addEventListener("levelchange", renderBattery);
+      battery.addEventListener("chargingchange", renderBattery);
+      renderBattery();
+    } catch { /* Arc-Reaktor bleibt bei 100 % */ }
+  }
+
+  /* ---------- Simulierte Last ---------- */
+  const sim = { cpu: 22, ram: 48, down: [], up: [] };
+  const memGB = navigator.deviceMemory;
+  if (memGB) $("ramSub").textContent = "SIM · " + memGB + " GB";
+  function tickSim() {
+    const load = busy ? 55 : 18;
+    sim.cpu += (load + Math.random() * 25 - sim.cpu) * 0.35;
+    sim.ram += (46 + Math.sin(Date.now() / 20000) * 10 + Math.random() * 4 - sim.ram) * 0.2;
+    setRing($("cpuArc"), sim.cpu / 100); $("cpuTxt").textContent = Math.round(sim.cpu) + "%";
+    setRing($("ramArc"), sim.ram / 100); $("ramTxt").textContent = Math.round(sim.ram) + "%";
+    const spike = (base) => Math.random() < 0.08 ? base * (3 + Math.random() * 6) : base * (0.3 + Math.random());
+    sim.down.push(spike(busy ? 180 : 40)); sim.up.push(spike(busy ? 60 : 12));
+    if (sim.down.length > 120) { sim.down.shift(); sim.up.shift(); }
+    $("dl").textContent = sim.down.at(-1).toFixed(1) + " KB/s";
+    $("ul").textContent = sim.up.at(-1).toFixed(1) + " KB/s";
+    drawSpark($("netDown"), sim.down); drawSpark($("netUp"), sim.up);
+  }
+  function fitCanvas(c) {
+    const dpr = Math.min(devicePixelRatio || 1, 2), r = c.getBoundingClientRect();
+    const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    return { ctx: c.getContext("2d"), w, h, dpr };
+  }
+  function drawSpark(c, data) {
+    const { ctx, w, h } = fitCanvas(c);
+    ctx.clearRect(0, 0, w, h);
+    const max = Math.max(...data, 1), n = 120, step = w / (n - 1);
+    ctx.strokeStyle = `rgba(${ACC}, .12)`; ctx.lineWidth = 1;
+    for (let y = 1; y < 4; y++) { ctx.beginPath(); ctx.moveTo(0, h * y / 4); ctx.lineTo(w, h * y / 4); ctx.stroke(); }
+    ctx.beginPath();
+    data.forEach((v, i) => { const x = (n - data.length + i) * step, y = h - (v / max) * (h - 4) - 1; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.strokeStyle = `rgb(${ACC})`; ctx.lineWidth = 1.5; ctx.shadowColor = `rgb(${ACC})`; ctx.shadowBlur = 6; ctx.stroke();
+    ctx.lineTo(w, h); ctx.lineTo((n - data.length) * step, h); ctx.closePath();
+    ctx.shadowBlur = 0; ctx.fillStyle = `rgba(${ACC}, .12)`; ctx.fill();
+  }
+
+  /* ---------- Hintergrund: Leiterbahnen ---------- */
+  const traces = [];
+  function drawGrid() {
+    const c = $("grid-bg"), dpr = Math.min(devicePixelRatio || 1, 2);
+    c.width = innerWidth * dpr; c.height = innerHeight * dpr;
+    const ctx = c.getContext("2d"); ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    traces.length = 0;
+    for (let i = 0; i < 38; i++) {
+      let x = rnd() * innerWidth, y = rnd() * innerHeight; const pts = [[x, y]];
+      for (let s = 0; s < 3; s++) { if (s % 2) y += (rnd() - .5) * 220; else x += (rnd() - .5) * 420; pts.push([x, y]); }
+      traces.push(pts);
+      ctx.beginPath(); pts.forEach(([px, py], k) => k ? ctx.lineTo(px, py) : ctx.moveTo(px, py));
+      ctx.strokeStyle = `rgba(${ACC}, ${0.05 + rnd() * 0.12})`; ctx.lineWidth = 1; ctx.stroke();
+      const [ex, ey] = pts.at(-1); ctx.beginPath(); ctx.arc(ex, ey, 2, 0, 7); ctx.fillStyle = `rgba(${ACC}, .5)`; ctx.fill();
+    }
+  }
+
+  /* ---------- Arc-Reaktor ---------- */
+  const MODULES = [
+    ["Diagnose", "Führe eine vollständige Systemdiagnose durch."],
+    ["Anzug Mk VII", "Wie ist der Status des Mark-VII-Anzugs?"],
+    ["Wetter", "Gib mir einen kurzen Wetterbericht."],
+    ["Kalender", "Was steht heute an?"],
+    ["Werkstatt", "Bereite die Werkstatt für einen Prototypen vor."],
+    ["Sicherheit", "Wie ist die Sicherheitslage im Haus?"],
+    ["Protokoll", "Fasse das bisherige Protokoll zusammen."]
+  ];
+  function layoutLaunch() {
+    const nav = $("launch"); if (!nav.children.length) {
+      MODULES.forEach(([label, q]) => { const b = document.createElement("button"); b.type = "button"; b.textContent = label; b.addEventListener("click", () => submit(q)); nav.append(b); });
+    }
+    const r = nav.getBoundingClientRect(), cx = r.width / 2, cy = r.height * 0.47, R = Math.min(r.width, r.height) * 0.43;
+    [...nav.children].forEach((b, i) => {
+      const a = Math.PI * (0.62 + i * (0.76 / (MODULES.length - 1)));
+      b.style.left = (cx + Math.cos(a) * R * 1.02) + "px";
+      b.style.top = (cy - Math.sin(a) * R) + "px";
+    });
+  }
+  let busy = false, pulse = 0;
+  function drawReactor(t) {
+    const c = $("reactor"), { ctx, w, h, dpr } = fitCanvas(c);
+    ctx.clearRect(0, 0, w, h);
+    const cx = w / 2, cy = h * 0.47, R = Math.min(w, h) * 0.43, T = reduced ? 0 : t / 1000;
+    pulse += ((busy ? 1 : 0) - pulse) * 0.05;
+    ctx.save(); ctx.translate(cx, cy); ctx.lineCap = "butt";
+    const col = (a) => `rgba(${ACC}, ${a})`;
+    const arc = (r, a0, a1, lw, a, blur = 0) => { ctx.beginPath(); ctx.arc(0, 0, r, a0, a1); ctx.lineWidth = lw * dpr; ctx.strokeStyle = col(a); ctx.shadowColor = col(1); ctx.shadowBlur = blur * dpr; ctx.stroke(); ctx.shadowBlur = 0; };
+
+    // Äußere Skala
+    for (let i = 0; i < 120; i++) {
+      const a = i / 120 * Math.PI * 2 + T * 0.05, long = i % 10 === 0;
+      ctx.beginPath(); ctx.moveTo(Math.cos(a) * R, Math.sin(a) * R); ctx.lineTo(Math.cos(a) * (R - (long ? 14 : 6) * dpr), Math.sin(a) * (R - (long ? 14 : 6) * dpr));
+      ctx.lineWidth = dpr; ctx.strokeStyle = col(long ? .8 : .3); ctx.stroke();
+    }
+    arc(R * 1.04, 0, Math.PI * 2, 1, .25);
+    // Segmentierte Ringe mit Gegenrotation
+    const segs = (r, n, gap, lw, speed, a) => { for (let i = 0; i < n; i++) { const s = i / n * Math.PI * 2 + T * speed; arc(r, s, s + Math.PI * 2 / n - gap, lw, a, 4); } };
+    segs(R * 0.88, 3, 0.35, 5, 0.25, .75);
+    segs(R * 0.80, 24, 0.09, 10, -0.12, .22 + pulse * .25);
+    arc(R * 0.72, T * 0.6, T * 0.6 + Math.PI * 1.35, 2, .9, 8);
+    arc(R * 0.72, T * 0.6 + Math.PI * 1.45, T * 0.6 + Math.PI * 1.9, 2, .4);
+    segs(R * 0.62, 6, 0.25, 14, 0.4 + pulse, .5);
+    arc(R * 0.53, 0, Math.PI * 2, 1.5, .35);
+
+    // Roter Scanner-Bogen (wie im Referenzbild)
+    const sweep = -Math.PI * 0.5 + Math.sin(T * 0.7) * 0.6;
+    ctx.beginPath(); ctx.arc(0, 0, R * 0.93, sweep - 0.45, sweep + 0.45);
+    ctx.lineWidth = 3 * dpr; ctx.strokeStyle = "#ff3a48"; ctx.shadowColor = "#ff3a48"; ctx.shadowBlur = 10 * dpr; ctx.stroke(); ctx.shadowBlur = 0;
+
+    // Kern
+    const core = R * (0.38 + Math.sin(T * 2) * 0.01 + pulse * 0.03);
+    const g = ctx.createRadialGradient(-core * .25, -core * .3, core * .05, 0, 0, core);
+    g.addColorStop(0, "rgba(235,255,255,.95)"); g.addColorStop(.35, col(.85)); g.addColorStop(.75, col(.25)); g.addColorStop(1, col(0));
+    ctx.beginPath(); ctx.arc(0, 0, core, 0, Math.PI * 2); ctx.fillStyle = g; ctx.shadowColor = col(1); ctx.shadowBlur = (30 + pulse * 30) * dpr; ctx.fill(); ctx.shadowBlur = 0;
+    // Innere Struktur (Dreieck-Segmente wie beim Arc-Reaktor)
+    for (let i = 0; i < 10; i++) {
+      const a = i / 10 * Math.PI * 2 - T * 0.3;
+      ctx.beginPath(); ctx.arc(0, 0, core * 0.82, a, a + 0.42); ctx.lineWidth = 6 * dpr; ctx.strokeStyle = "rgba(1,8,12,.55)"; ctx.stroke();
+    }
+    arc(core * 0.5, 0, Math.PI * 2, 2, .9, 6);
+    ctx.restore();
+
+    requestAnimationFrame(drawReactor);
+  }
+
+  /* ---------- Konsole ---------- */
+  const log = $("log");
+  let lines = 0;
+  function say(cls, who, text) {
+    const p = document.createElement("p"); p.className = cls;
+    if (who) { const w = document.createElement("span"); w.className = "who"; w.textContent = who + ">"; p.append(w); }
+    const body = document.createElement("span"); body.textContent = text; p.append(body);
+    log.append(p); log.scrollTop = log.scrollHeight;
+    $("logCount").textContent = ++lines;
+    return body;
+  }
+  let voice = false;
+  function speak(text) {
+    if (!voice || !("speechSynthesis" in window)) return;
+    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text.slice(0, 400)); u.lang = "de-DE"; u.rate = 1.02; u.pitch = 0.85; speechSynthesis.speak(u); } catch {}
+  }
+  $("voiceBtn").addEventListener("click", (e) => { voice = !voice; e.currentTarget.setAttribute("aria-pressed", voice); if (voice) speak("Stimme aktiviert, Sir."); });
+
+  function setAlert(on) {
+    document.documentElement.classList.toggle("alert-mode", on);
+    $("modeLbl").textContent = on ? "Alarm" : "Normal";
+    refreshAccent(); drawGrid();
+  }
+  function statusReport() {
+    return `Systeme nominal. CPU ${Math.round(sim.cpu)} %, RAM ${Math.round(sim.ram)} %, Energie ${$("battPct").textContent}, Laufzeit ${$("uptime").textContent}. Modus: ${$("modeLbl").textContent}.`;
+  }
+  const LOCAL = {
+    hilfe: () => "Befehle: status · zeit · datum · alarm · normal · vollbild · leeren. Alles andere beantworte ich frei" + (sample ? "." : ", sobald die Claude-Verbindung steht."),
+    status: statusReport,
+    zeit: () => "Es ist " + new Date().toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" }) + " Uhr.",
+    datum: () => "Heute ist " + new Date().toLocaleDateString(LOCALE, { weekday: "long", day: "numeric", month: "long", year: "numeric" }) + ".",
+    alarm: () => { setAlert(true); return "Alarmstufe Rot. Alle Systeme in Bereitschaft."; },
+    normal: () => { setAlert(false); return "Zurück im Normalbetrieb."; },
+    vollbild: () => { document.documentElement.requestFullscreen?.().catch(() => say("sys", "", "Vollbild ist in dieser Ansicht nicht verfügbar.")); return "Vollbild angefordert."; },
+    leeren: () => { log.textContent = ""; lines = 0; turns.length = 0; return "Protokoll geleert."; }
+  };
+
+  let sample = null, canTools = false, ctl = null;
+  const turns = [];
+  const RULES = `Du bist J.A.R.V.I.S., die KI von Tony Stark, eingebettet in ein HUD-Dashboard. Antworte auf Deutsch, knapp (1–4 Sätze), höflich-trocken mit britischem Butler-Humor, sprich den Nutzer gelegentlich mit "Sir" an. Kein Markdown. Die Anzeigen für CPU, RAM und Netzwerk sind simuliert, das Wetter sind Beispieldaten — gib nichts davon als echte Messung aus. Aktuelle Zeit: {NOW}. Aktueller HUD-Status: {STATUS}`;
+
+  const TOOLS = [
+    { name: "set_alert_mode", description: "Schaltet das HUD in den roten Alarmmodus (on=true) oder zurück in den Normalbetrieb (on=false). Gibt den neuen Modus zurück.",
+      inputSchema: { type: "object", properties: { on: { type: "boolean" } }, required: ["on"] },
+      execute: (i) => { setAlert(Boolean(i.on)); return { mode: i.on ? "alarm" : "normal" }; } },
+    { name: "get_status", description: "Liefert den aktuellen HUD-Status (simulierte CPU/RAM, Energie, Laufzeit, Modus) als Text.",
+      execute: () => statusReport() }
+  ];
+
+  async function askClaude(q) {
+    turns.push({ role: "user", content: q });
+    while (turns.length > 12) turns.shift();
+    if (turns[0].role !== "user") turns.shift();
+    const rules = RULES.replace("{NOW}", new Date().toLocaleString(LOCALE)).replace("{STATUS}", statusReport());
+    const out = say("ai", "JARVIS", "Denke nach …");
+    busy = true; ctl = new AbortController(); $("sendBtn").disabled = true;
+    try {
+      const opts = { signal: ctl.signal, modelTier: "quick", onText: ({ text }) => { out.textContent = text; log.scrollTop = log.scrollHeight; } };
+      if (canTools) opts.tools = TOOLS; else opts.cache = false;
+      const { text } = await sample([{ role: "user", content: rules }, ...turns], opts);
+      out.textContent = text; turns.push({ role: "assistant", content: text }); speak(text);
+    } catch (e) {
+      turns.pop();
+      out.textContent = e?.text || "";
+      const msg = {
+        not_granted: "Keine Freigabe für Claude — ich arbeite lokal weiter.", sampling_disabled: "Claude ist für dieses Konto nicht verfügbar.",
+        rate_limited: "Zu viele Anfragen. Bitte gleich noch einmal.", session_expired: "Bitte erneut anmelden.",
+        refused: "Dazu gebe ich keine Auskunft.", cancelled: ""
+      }[e?.code] ?? "Verbindung gestört. Bitte erneut senden.";
+      if (!e?.text) out.parentElement.remove();
+      if (msg) say("err", "SYS", msg);
+      if (["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"].includes(e?.code)) { sample = null; $("aiTag").textContent = "Lokal"; $("aiTag").classList.remove("live"); }
+    } finally { busy = false; $("sendBtn").disabled = false; }
+  }
+
+  async function submit(raw) {
+    const q = raw.trim(); if (!q || busy) return;
+    say("me", "DU", q);
+    const key = q.toLowerCase().replace(/[^a-zäöü]/g, "");
+    if (LOCAL[key]) { const r = LOCAL[key](); if (r) { say("ai", "JARVIS", r); speak(r); } return; }
+    if (sample) return askClaude(q);
+    const r = "Ohne Claude-Verbindung kenne ich nur lokale Befehle. Tippe „hilfe“.";
+    say("ai", "JARVIS", r); speak(r);
+  }
+  $("cmdForm").addEventListener("submit", (e) => { e.preventDefault(); const v = $("cmdInput").value; $("cmdInput").value = ""; submit(v); });
+  document.querySelectorAll("[data-cmd]").forEach((b) => b.addEventListener("click", () => submit(b.dataset.cmd)));
+
+  // Missionen (rechte Spalte)
+  [["Werkstatt-Scan", "Scanne die Werkstatt und melde Auffälligkeiten."], ["Anzug-Telemetrie", "Zeig mir die Telemetrie des Anzugs."], ["Energiebericht", "status"], ["Stark Expo", "Erzähl mir kurz etwas über die Stark Expo."], ["Protokoll leeren", "leeren"]]
+    .forEach(([l, q]) => { const b = document.createElement("button"); b.type = "button"; b.textContent = l; b.addEventListener("click", () => submit(q)); $("feed").append(b); });
+
+  /* ---------- Start ---------- */
+  refreshAccent();
+  tickClock(); storage(); energy(); tickSim(); drawGrid(); layoutLaunch();
+  setInterval(tickClock, 1000);
+  setInterval(tickSim, reduced ? 3000 : 900);
+  requestAnimationFrame(drawReactor);
+  addEventListener("resize", () => { drawGrid(); layoutLaunch(); });
+  say("sys", "", "Hochfahren … Arc-Reaktor stabil. Anzeigen für CPU, RAM, Netz und Wetter sind simuliert.");
+  say("ai", "JARVIS", "Guten " + (new Date().getHours() < 11 ? "Morgen" : new Date().getHours() < 18 ? "Tag" : "Abend") + ", Sir. Alle Systeme online. Tippe „hilfe“ für Befehle.");
+
+  (async () => {
+    try {
+      if (!window.claude?.use) return;
+      const s = await window.claude.use("sample");
+      if (!s) return;
+      sample = s;
+      try { canTools = !!(await s.limits())?.tools; } catch { canTools = false; }
+      $("aiTag").textContent = "Claude"; $("aiTag").classList.add("live");
+      say("sys", "", "Verbindung zu Claude hergestellt. Frag mich, was du willst.");
+    } catch { /* lokal weiter */ }
+  })();
+})();
+</script>
