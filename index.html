@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <title>J.A.R.V.I.S. HUD</title>
 <meta name="description" content="Animiertes Iron-Man-Style Desktop-HUD mit Jarvis-Konsole.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -112,14 +113,27 @@
   .log .ai { color: var(--bright); }
   .log .sys { color: var(--dim); font-size: 12.5px; }
   .log .err { color: var(--alert); }
-  .cmd { display: flex; gap: 8px; }
-  .cmd input { flex: 1; min-width: 0; background: rgba(var(--accent-rgb), .05); border: 1px solid var(--line); color: var(--bright); font: 15px var(--mono); padding: 8px 10px; caret-color: var(--accent); }
+  .cmd { display: flex; flex-wrap: wrap; gap: 8px; }
+  .cmd input { flex: 1 1 220px; min-width: 0; background: rgba(var(--accent-rgb), .05); border: 1px solid var(--line); color: var(--bright); font: 15px var(--mono); padding: 8px 10px; caret-color: var(--accent); }
   .cmd input::placeholder { color: var(--dim); }
   .cmd input:focus { outline: none; border-color: var(--accent); box-shadow: inset 0 0 12px rgba(var(--accent-rgb), .2); }
   .btn { background: transparent; border: 1px solid var(--accent); color: var(--accent); font: 600 13px var(--label); letter-spacing: .18em; text-transform: uppercase; padding: 6px 12px; cursor: pointer; }
   .btn:hover, .btn:focus-visible { background: var(--accent); color: var(--ground); outline: none; }
   .btn[aria-pressed="true"] { background: rgba(var(--accent-rgb), .22); color: var(--bright); }
   .btn:disabled { opacity: .4; cursor: default; }
+  .btn.stop { border-color: var(--alert); color: var(--alert); }
+  .btn.stop:hover, .btn.stop:focus-visible { background: var(--alert); color: var(--ground); }
+  .approve { border: 1px solid var(--alert); background: rgba(255, 58, 72, .07); padding: 8px 10px; display: grid; gap: 6px; font: 14px/1.4 var(--mono); }
+  .approve b { color: var(--alert); font-weight: 400; letter-spacing: .08em; }
+  .approve code { color: var(--bright); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .approve .row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .hform { display: grid; gap: 6px; }
+  .hform label { font: 600 11px var(--label); letter-spacing: .18em; text-transform: uppercase; color: var(--dim); }
+  .hform input { background: rgba(var(--accent-rgb), .05); border: 1px solid var(--line); color: var(--bright); font: 14px var(--mono); padding: 6px 8px; min-width: 0; }
+  .hform input:focus { outline: none; border-color: var(--accent); }
+  .hnote { margin: 8px 0 0; font-size: 13.5px; color: var(--dim); }
+  .hnote code { font-family: var(--mono); color: var(--text); }
+  .tag.bad { border-color: rgba(255, 58, 72, .6); color: var(--alert); }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .chips button { background: none; border: 1px solid var(--line); color: var(--dim); font: 13px var(--mono); padding: 2px 8px; cursor: pointer; }
   .chips button:hover, .chips button:focus-visible { color: var(--bright); border-color: var(--accent); outline: none; }
@@ -209,6 +223,18 @@
           <button type="button" data-cmd="hilfe">hilfe</button>
         </div>
       </section>
+
+      <section class="panel" aria-label="Hermes Agent">
+        <div class="ptitle">Hermes Agent <span class="tag" id="hermesTag">Getrennt</span></div>
+        <form class="hform" id="hermesForm" autocomplete="off">
+          <label for="hermesUrl">Adresse</label>
+          <input id="hermesUrl" name="hermesUrl" value="http://127.0.0.1:8642" spellcheck="false">
+          <label for="hermesKey">API-Schlüssel</label>
+          <input id="hermesKey" name="hermesKey" type="password" placeholder="API_SERVER_KEY">
+          <button class="btn" type="submit" id="hermesBtn">Verbinden</button>
+        </form>
+        <p class="hnote" id="hermesNote">Verbindet Jarvis mit deinem lokalen Hermes Agent. Dann führt Hermes Befehle auf deinem PC aus.</p>
+      </section>
     </div>
 
     <!-- ===== Zentrum ===== -->
@@ -250,7 +276,9 @@
         <div class="log" id="log" aria-live="polite"></div>
         <form class="cmd" id="cmdForm" autocomplete="off">
           <input id="cmdInput" name="cmd" aria-label="Befehl an Jarvis" placeholder="Frag Jarvis … z. B. „status“ oder „Wie spät ist es?“" maxlength="600">
+          <button class="btn" type="button" id="micBtn" aria-pressed="false" title="Sprechen">Mikro</button>
           <button class="btn" type="submit" id="sendBtn">Senden</button>
+          <button class="btn stop" type="button" id="stopBtn" hidden>Stopp</button>
           <button class="btn" type="button" id="voiceBtn" aria-pressed="false" title="Antworten vorlesen">Stimme</button>
         </form>
       </section>
@@ -551,8 +579,8 @@
     return body;
   }
   let voice = false;
-  function speak(text) {
-    if (!voice || !("speechSynthesis" in window)) return;
+  function speak(text, force) {
+    if (!(voice || force) || !("speechSynthesis" in window)) return;
     try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text.slice(0, 400)); u.lang = "de-DE"; u.rate = 1.02; u.pitch = 0.85; speechSynthesis.speak(u); } catch {}
   }
   $("voiceBtn").addEventListener("click", (e) => { voice = !voice; e.currentTarget.setAttribute("aria-pressed", voice); if (voice) speak("Stimme aktiviert, Sir."); });
@@ -566,14 +594,14 @@
     return `Systeme nominal. CPU ${Math.round(sim.cpu)} %, RAM ${Math.round(sim.ram)} %, Energie ${$("battPct").textContent}, Laufzeit ${$("uptime").textContent}. Modus: ${$("modeLbl").textContent}.`;
   }
   const LOCAL = {
-    hilfe: () => "Befehle: status · zeit · datum · alarm · normal · vollbild · leeren. Alles andere beantworte ich frei" + (sample ? "." : ", sobald die Claude-Verbindung steht."),
+    hilfe: () => "Befehle: status · zeit · datum · alarm · normal · vollbild · leeren. " + (hermes.ok ? "Alles andere erledigt Hermes direkt auf deinem PC." : sample ? "Alles andere beantworte ich über Claude. Für Aktionen auf deinem PC verbinde links den Hermes Agent." : "Für freie Fragen und Aktionen auf deinem PC verbinde links den Hermes Agent."),
     status: statusReport,
     zeit: () => "Es ist " + new Date().toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" }) + " Uhr.",
     datum: () => "Heute ist " + new Date().toLocaleDateString(LOCALE, { weekday: "long", day: "numeric", month: "long", year: "numeric" }) + ".",
     alarm: () => { setAlert(true); return "Alarmstufe Rot. Alle Systeme in Bereitschaft."; },
     normal: () => { setAlert(false); return "Zurück im Normalbetrieb."; },
     vollbild: () => { document.documentElement.requestFullscreen?.().catch(() => say("sys", "", "Vollbild ist in dieser Ansicht nicht verfügbar.")); return "Vollbild angefordert."; },
-    leeren: () => { log.textContent = ""; lines = 0; turns.length = 0; return "Protokoll geleert."; }
+    leeren: () => { log.textContent = ""; lines = 0; turns.length = 0; hermes.turns.length = 0; hermes.session = newSession(); return "Protokoll geleert."; }
   };
 
   let sample = null, canTools = false, ctl = null;
@@ -588,7 +616,7 @@
       execute: () => statusReport() }
   ];
 
-  async function askClaude(q) {
+  async function askClaude(q, spoken) {
     turns.push({ role: "user", content: q });
     while (turns.length > 12) turns.shift();
     if (turns[0].role !== "user") turns.shift();
@@ -599,7 +627,7 @@
       const opts = { signal: ctl.signal, modelTier: "quick", onText: ({ text }) => { out.textContent = text; log.scrollTop = log.scrollHeight; } };
       if (canTools) opts.tools = TOOLS; else opts.cache = false;
       const { text } = await sample([{ role: "user", content: rules }, ...turns], opts);
-      out.textContent = text; turns.push({ role: "assistant", content: text }); speak(text);
+      out.textContent = text; turns.push({ role: "assistant", content: text }); speak(text, spoken);
     } catch (e) {
       turns.pop();
       out.textContent = e?.text || "";
@@ -610,19 +638,203 @@
       }[e?.code] ?? "Verbindung gestört. Bitte erneut senden.";
       if (!e?.text) out.parentElement.remove();
       if (msg) say("err", "SYS", msg);
-      if (["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"].includes(e?.code)) { sample = null; $("aiTag").textContent = "Lokal"; $("aiTag").classList.remove("live"); }
+      if (["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"].includes(e?.code)) { sample = null; refreshAiTag(); }
     } finally { busy = false; $("sendBtn").disabled = false; }
   }
 
-  async function submit(raw) {
+  /* ---------- Hermes Agent (lokaler API-Server, Runs-API) ---------- */
+  const store = {
+    get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+    set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} }
+  };
+  const newSession = () => "jarvis-hud-" + Date.now().toString(36);
+  const hermes = { ok: false, url: "", key: "", session: newSession(), turns: [], runId: null };
+  const inArtifact = location.protocol === "https:" && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+  const HERMES_RULES = "Du sprichst als J.A.R.V.I.S. über ein Iron-Man-HUD mit dem Nutzer. Antworte auf Deutsch, knapp (meist 1–3 Sätze, die Antwort wird oft vorgelesen), höflich-trocken, gelegentlich mit \"Sir\". Kein Markdown in der Schlussantwort. Nutze deine Werkzeuge (Terminal, Dateien, Browser, Web) auf dem PC des Nutzers, wenn er dich um eine Aktion bittet, und sag danach kurz, was du getan hast.";
+  const APPROVAL_LABELS = { once: "Einmal erlauben", session: "Für diese Sitzung", always: "Immer erlauben", deny: "Ablehnen" };
+
+  function setHermesState(state, note) {
+    const tag = $("hermesTag");
+    tag.textContent = { ok: "Verbunden", wait: "Prüfe …", bad: "Fehler", off: "Getrennt" }[state];
+    tag.className = "tag" + (state === "ok" ? " live" : state === "bad" ? " bad" : "");
+    if (note != null) $("hermesNote").innerHTML = note;
+    $("hermesBtn").textContent = state === "ok" ? "Trennen" : "Verbinden";
+    refreshAiTag();
+  }
+  function refreshAiTag() {
+    const t = $("aiTag");
+    t.textContent = hermes.ok ? "Hermes" : sample ? "Claude" : "Lokal";
+    t.classList.toggle("live", hermes.ok || !!sample);
+  }
+  function hermesFetch(path, opts = {}) {
+    const headers = { Authorization: "Bearer " + hermes.key };
+    if (opts.body) headers["Content-Type"] = "application/json";
+    return fetch(hermes.url + path, { ...opts, headers });
+  }
+  async function errText(r) {
+    try { const j = await r.json(); return j?.error?.message || j?.message || ("HTTP " + r.status); } catch { return "HTTP " + r.status; }
+  }
+  async function connectHermes(silent) {
+    hermes.url = $("hermesUrl").value.trim().replace(/\/+$/, "");
+    hermes.key = $("hermesKey").value.trim();
+    if (!hermes.key) { setHermesState("bad", "Trag den <code>API_SERVER_KEY</code> aus <code>~/.hermes/.env</code> ein."); return; }
+    setHermesState("wait");
+    try {
+      const r = await hermesFetch("/v1/capabilities");
+      if (r.status === 401 || r.status === 403) throw Object.assign(new Error(), { hint: "Der API-Schlüssel stimmt nicht mit <code>API_SERVER_KEY</code> überein." });
+      if (!r.ok) throw Object.assign(new Error(), { hint: "Hermes antwortet mit " + r.status + "." });
+      const caps = await r.json();
+      if (caps?.features && caps.features.run_submission === false) throw Object.assign(new Error(), { hint: "Diese Hermes-Version unterstützt die Runs-API nicht. Bitte <code>hermes update</code>." });
+      hermes.ok = true;
+      store.set("jarvis.hermesUrl", hermes.url); store.set("jarvis.hermesKey", hermes.key);
+      setHermesState("ok", "Verbunden mit <code></code>. Jarvis leitet jetzt alle Fragen an Hermes weiter.");
+      $("hermesNote").querySelector("code").textContent = caps?.model || "hermes-agent";
+      say("sys", "", "Hermes Agent verbunden. Befehle werden auf deinem PC ausgeführt; riskante Aktionen musst du hier freigeben.");
+    } catch (e) {
+      hermes.ok = false;
+      const hint = e.hint || (inArtifact
+        ? "In der claude.ai-Vorschau blockiert der Browser Verbindungen zu deinem PC. Starte die lokale Version mit <code>start-jarvis</code>."
+        : "Keine Verbindung. Läuft <code>hermes gateway</code>? Steht <code>" + location.origin + "</code> in <code>API_SERVER_CORS_ORIGINS</code>?");
+      setHermesState(silent ? "off" : "bad", hint);
+    }
+  }
+  $("hermesForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (hermes.ok) { hermes.ok = false; store.set("jarvis.hermesKey", null); setHermesState("off", "Getrennt. Der Schlüssel wurde aus diesem Browser entfernt."); return; }
+    connectHermes(false);
+  });
+
+  function approvalCard(ev) {
+    const box = document.createElement("div"); box.className = "approve"; box.setAttribute("role", "alert");
+    const t = document.createElement("b"); t.textContent = "FREIGABE ERFORDERLICH";
+    const c = document.createElement("code"); c.textContent = ev.command || ev.description || "Unbekannte Aktion";
+    box.append(t, c);
+    if (ev.command && ev.description) { const d = document.createElement("span"); d.textContent = ev.description; box.append(d); }
+    const row = document.createElement("div"); row.className = "row";
+    const runId = ev.run_id;
+    (ev.choices?.length ? ev.choices : ["once", "deny"]).forEach((choice) => {
+      const b = document.createElement("button"); b.type = "button"; b.className = "btn" + (choice === "deny" ? " stop" : "");
+      b.textContent = APPROVAL_LABELS[choice] || choice;
+      b.addEventListener("click", async () => {
+        row.querySelectorAll("button").forEach((x) => { x.disabled = true; });
+        try {
+          const r = await hermesFetch(`/v1/runs/${encodeURIComponent(runId)}/approval`, { method: "POST", body: JSON.stringify({ choice, ...(ev.request_id ? { request_id: ev.request_id } : {}) }) });
+          if (!r.ok) throw new Error(await errText(r));
+          t.textContent = choice === "deny" ? "ABGELEHNT" : "ERLAUBT · " + (APPROVAL_LABELS[choice] || choice);
+          row.remove();
+        } catch (err) {
+          row.querySelectorAll("button").forEach((x) => { x.disabled = false; });
+          say("err", "SYS", "Freigabe fehlgeschlagen: " + err.message);
+        }
+      });
+      row.append(b);
+    });
+    box.append(row);
+    log.append(box); log.scrollTop = log.scrollHeight;
+    speak("Sir, ich brauche Ihre Freigabe.", true);
+  }
+
+  async function askHermes(q, spoken) {
+    const out = say("ai", "JARVIS", "Hermes arbeitet …");
+    busy = true; ctl = new AbortController();
+    $("sendBtn").hidden = true; $("stopBtn").hidden = false;
+    let text = "", final = null, failed = null;
+    try {
+      const r = await hermesFetch("/v1/runs", { method: "POST", body: JSON.stringify({
+        input: q, instructions: HERMES_RULES, conversation_history: hermes.turns.slice(-24), session_id: hermes.session }) });
+      if (!r.ok) throw new Error(await errText(r));
+      const { run_id } = await r.json();
+      hermes.runId = run_id;
+      const ev = await hermesFetch(`/v1/runs/${encodeURIComponent(run_id)}/events`, { signal: ctl.signal });
+      if (!ev.ok || !ev.body) throw new Error(await errText(ev));
+      const reader = ev.body.getReader(), dec = new TextDecoder();
+      let buf = "";
+      const handle = (frame) => {
+        const data = frame.split("\n").filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trimStart()).join("\n");
+        if (!data) return;
+        let e; try { e = JSON.parse(data); } catch { return; }
+        switch (e.event) {
+          case "message.delta": if (!text) log.append(out.parentElement); text += e.delta || ""; out.textContent = text; log.scrollTop = log.scrollHeight; break;
+          case "message.interim": if (!e.already_streamed && e.text) say("sys", "", e.text); break;
+          case "tool.started": say("sys", "", "⚙ " + (e.tool || "Werkzeug") + (e.preview ? " → " + String(e.preview).slice(0, 160) : "")); break;
+          case "tool.completed": if (e.error) say("err", "", "⚠ " + (e.tool || "Werkzeug") + " fehlgeschlagen" + (e.preview ? ": " + String(e.preview).slice(0, 200) : "")); break;
+          case "approval.request": approvalCard(e); break;
+          case "run.completed": final = e.output || text; break;
+          case "run.failed": case "run.cancelled": case "run.interrupted":
+            failed = e.event === "run.cancelled" ? "Abgebrochen." : (e.error || "Hermes konnte die Aufgabe nicht abschließen."); final = e.output || text; break;
+        }
+      };
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+        let i; while ((i = buf.indexOf("\n\n")) >= 0) { handle(buf.slice(0, i)); buf = buf.slice(i + 2); }
+      }
+      if (buf.trim()) handle(buf);
+      if (final == null && !failed) {
+        const st = await hermesFetch(`/v1/runs/${encodeURIComponent(run_id)}`).then((x) => x.ok ? x.json() : null).catch(() => null);
+        final = st?.output || text; if (st && st.status !== "completed") failed = st.error || "Status: " + st.status;
+      }
+      if (final) { log.append(out.parentElement); out.textContent = final; hermes.turns.push({ role: "user", content: q }, { role: "assistant", content: final }); speak(final, spoken); }
+      else out.parentElement.remove();
+      if (failed) say("err", "SYS", failed);
+    } catch (e) {
+      if (e?.name === "AbortError") { out.textContent = text || "Abgebrochen."; }
+      else {
+        if (!text) out.parentElement.remove();
+        say("err", "SYS", "Hermes nicht erreichbar: " + (e?.message || e) + ". Läuft hermes gateway noch?");
+        if (e instanceof TypeError) { hermes.ok = false; setHermesState("bad"); }
+      }
+    } finally {
+      busy = false; hermes.runId = null;
+      $("sendBtn").hidden = false; $("stopBtn").hidden = true;
+    }
+  }
+  $("stopBtn").addEventListener("click", async () => {
+    const id = hermes.runId;
+    if (id) { try { await hermesFetch(`/v1/runs/${encodeURIComponent(id)}/stop`, { method: "POST", body: "{}" }); } catch {} }
+    else ctl?.abort();
+  });
+
+  async function submit(raw, spoken = false) {
     const q = raw.trim(); if (!q || busy) return;
     say("me", "DU", q);
     const key = q.toLowerCase().replace(/[^a-zäöü]/g, "");
-    if (LOCAL[key]) { const r = LOCAL[key](); if (r) { say("ai", "JARVIS", r); speak(r); } return; }
-    if (sample) return askClaude(q);
-    const r = "Ohne Claude-Verbindung kenne ich nur lokale Befehle. Tippe „hilfe“.";
-    say("ai", "JARVIS", r); speak(r);
+    if (LOCAL[key]) { const r = LOCAL[key](); if (r) { say("ai", "JARVIS", r); speak(r, spoken); } return; }
+    if (hermes.ok) return askHermes(q, spoken);
+    if (sample) return askClaude(q, spoken);
+    const r = "Dafür brauche ich den Hermes Agent. Verbinde ihn links im Panel „Hermes Agent“.";
+    say("ai", "JARVIS", r); speak(r, spoken);
   }
+
+  /* ---------- Spracheingabe ---------- */
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) $("micBtn").hidden = true;
+  let rec = null;
+  $("micBtn").addEventListener("click", () => {
+    if (rec) { rec.stop(); return; }
+    if (busy) return;
+    try { speechSynthesis?.cancel(); } catch {}
+    rec = new SR(); rec.lang = "de-DE"; rec.interimResults = true; rec.maxAlternatives = 1;
+    const btn = $("micBtn"), input = $("cmdInput");
+    btn.setAttribute("aria-pressed", "true"); input.placeholder = "Ich höre zu …";
+    let finalText = "";
+    rec.onresult = (e) => {
+      let interim = "";
+      for (const res of e.results) (res.isFinal ? (finalText = res[0].transcript) : (interim += res[0].transcript));
+      input.value = finalText || interim;
+    };
+    rec.onerror = (e) => {
+      const m = { "not-allowed": "Mikrofon-Zugriff verweigert. Erlaube ihn in der Adressleiste.", "no-speech": "Nichts gehört.", network: "Spracherkennung braucht eine Internetverbindung." }[e.error] || "Spracherkennung: " + e.error;
+      say("err", "SYS", m);
+    };
+    rec.onend = () => {
+      btn.setAttribute("aria-pressed", "false"); input.placeholder = "Frag Jarvis …";
+      rec = null;
+      if (finalText.trim()) { input.value = ""; submit(finalText, true); }
+    };
+    try { rec.start(); } catch (e) { rec = null; btn.setAttribute("aria-pressed", "false"); say("err", "SYS", "Mikrofon nicht verfügbar."); }
+  });
   $("cmdForm").addEventListener("submit", (e) => { e.preventDefault(); const v = $("cmdInput").value; $("cmdInput").value = ""; submit(v); });
   document.querySelectorAll("[data-cmd]").forEach((b) => b.addEventListener("click", () => submit(b.dataset.cmd)));
 
@@ -638,6 +850,10 @@
   requestAnimationFrame(drawReactor);
   addEventListener("resize", () => { drawGrid(); layoutLaunch(); });
   say("sys", "", "Hochfahren … Arc-Reaktor stabil. Anzeigen für CPU, RAM, Netz und Wetter sind simuliert.");
+  const savedUrl = store.get("jarvis.hermesUrl"), savedKey = store.get("jarvis.hermesKey");
+  if (savedUrl) $("hermesUrl").value = savedUrl;
+  if (savedKey) { $("hermesKey").value = savedKey; connectHermes(true); }
+  else if (inArtifact) $("hermesNote").innerHTML = "In der claude.ai-Vorschau kann der Browser deinen PC nicht erreichen. Für Hermes die lokale Version mit <code>start-jarvis</code> öffnen.";
   say("ai", "JARVIS", "Guten " + (new Date().getHours() < 11 ? "Morgen" : new Date().getHours() < 18 ? "Tag" : "Abend") + ", Sir. Alle Systeme online. Tippe „hilfe“ für Befehle.");
 
   (async () => {
@@ -647,8 +863,8 @@
       if (!s) return;
       sample = s;
       try { canTools = !!(await s.limits())?.tools; } catch { canTools = false; }
-      $("aiTag").textContent = "Claude"; $("aiTag").classList.add("live");
-      say("sys", "", "Verbindung zu Claude hergestellt. Frag mich, was du willst.");
+      refreshAiTag();
+      if (!hermes.ok) say("sys", "", "Verbindung zu Claude hergestellt. Frag mich, was du willst.");
     } catch { /* lokal weiter */ }
   })();
 })();
