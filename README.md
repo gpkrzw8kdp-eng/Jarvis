@@ -66,6 +66,13 @@ Im HUD links im Panel **Hermes Agent** den `API_SERVER_KEY` eintragen und auf
 **Verbinden** klicken. Der Schlüssel wird nur in diesem Browser gespeichert.
 **Trennen** löscht ihn wieder.
 
+## Vom iPad oder Handy: Jarvis über Discord
+
+Hermes kann zusätzlich ein Discord-Bot sein. Dann schreibst du Jarvis vom
+iPad aus oder schickst ihm Sprachnachrichten, und er arbeitet auf deinem PC.
+Die Schritt-für-Schritt-Anleitung steht in [`discord/ANLEITUNG.md`](discord/ANLEITUNG.md).
+Eine passende Jarvis-Persönlichkeit für Hermes liegt in [`discord/SOUL.md`](discord/SOUL.md).
+
 ## Sprechen
 
 Klick auf **Mikro**, sprich deinen Auftrag, und Jarvis antwortet laut. Das
