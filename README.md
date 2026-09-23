@@ -42,7 +42,8 @@ hermes            # kurzer Test-Chat, dann beenden
 
 ### 2. API-Server von Hermes einschalten
 
-Diese Zeilen in `~/.hermes/.env` eintragen (unter Windows `%USERPROFILE%\.hermes\.env`).
+Diese Zeilen in die `.env` von Hermes eintragen: unter Windows meist
+`%LOCALAPPDATA%\hermes\.env`, unter Linux/macOS `~/.hermes/.env`.
 Denk dir einen eigenen, langen Schlüssel aus:
 
 ```bash
@@ -59,8 +60,10 @@ Der Server bleibt standardmäßig nur auf deinem PC erreichbar (`127.0.0.1:8642`
 - **Windows:** Doppelklick auf `start-jarvis.bat`
 - **Linux/macOS:** `./start-jarvis.sh`
 
-Das Skript startet `hermes gateway`, falls er noch nicht läuft, liefert das HUD
-unter <http://localhost:8765> aus und öffnet den Browser. Voraussetzung ist Python 3.
+Das Skript liefert das HUD unter <http://localhost:8765> aus und öffnet den
+Browser. Unter Windows nutzt es das Python von Hermes, Linux/macOS brauchen Python 3.
+Läuft der Hermes-API-Server nicht, sagt es dir, was fehlt. Nach Änderungen an der
+`.env` startest du das Gateway mit `hermes gateway restart` neu.
 
 Im HUD links im Panel **Hermes Agent** den `API_SERVER_KEY` eintragen und auf
 **Verbinden** klicken. Der Schlüssel wird nur in diesem Browser gespeichert.
