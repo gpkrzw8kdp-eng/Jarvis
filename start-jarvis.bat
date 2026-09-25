@@ -1,12 +1,12 @@
 @echo off
-rem Startet das Jarvis-HUD lokal auf http://localhost:8765.
+rem Startet das Jarvis-HUD lokal auf http://localhost:8765 (mit Weiterleitung /hermes -> Hermes-API-Server).
 cd /d "%~dp0"
 
 curl -s -o nul http://127.0.0.1:8642/health
 if errorlevel 1 (
   echo.
   echo  Hermes-API-Server nicht erreichbar.
-  echo  1. In %LOCALAPPDATA%\hermes\.env muessen API_SERVER_ENABLED, API_SERVER_KEY und API_SERVER_CORS_ORIGINS stehen.
+  echo  1. In %LOCALAPPDATA%\hermes\.env muessen API_SERVER_ENABLED=true und API_SERVER_KEY stehen.
   echo  2. Danach: hermes gateway restart
   echo  Das HUD startet trotzdem, Hermes kannst du spaeter verbinden.
   echo.
@@ -17,6 +17,7 @@ if not exist "%PY%" (
   where py >nul 2>nul && (set "PY=py") || (set "PY=python")
 )
 
-start "" http://localhost:8765/index.html
+start "" http://localhost:8765/
 echo  Jarvis-HUD laeuft auf http://localhost:8765 - dieses Fenster offen lassen.
-"%PY%" -m http.server 8765 --bind 127.0.0.1
+echo  Vom iPad aus: siehe IPAD.md (Tailscale).
+"%PY%" serve.py

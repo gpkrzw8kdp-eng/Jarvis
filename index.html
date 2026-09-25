@@ -1,4 +1,9 @@
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Jarvis">
+<meta name="theme-color" content="#01080c">
 <title>J.A.R.V.I.S. HUD</title>
 <meta name="description" content="Animiertes Iron-Man-Style Desktop-HUD mit Jarvis-Konsole.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -40,6 +45,7 @@
   }
   #grid-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: .55; }
   .hud { position: relative; z-index: 1; max-width: 1480px; margin-inline: auto; display: grid; gap: 14px; }
+  .hud > * { min-width: 0; }
 
   /* ---------- Kopfzeile: Monatstage ---------- */
   .days { display: flex; gap: 2px; font: 500 15px var(--display); color: var(--dim); overflow-x: auto; scrollbar-width: none; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
@@ -228,9 +234,9 @@
         <div class="ptitle">Hermes Agent <span class="tag" id="hermesTag">Getrennt</span></div>
         <form class="hform" id="hermesForm" autocomplete="off">
           <label for="hermesUrl">Adresse</label>
-          <input id="hermesUrl" name="hermesUrl" value="http://127.0.0.1:8642" spellcheck="false">
+          <input id="hermesUrl" name="hermesUrl" value="" spellcheck="false" autocapitalize="off" autocorrect="off">
           <label for="hermesKey">API-Schlüssel</label>
-          <input id="hermesKey" name="hermesKey" type="password" placeholder="API_SERVER_KEY">
+          <input id="hermesKey" name="hermesKey" type="password" placeholder="API_SERVER_KEY" autocapitalize="off" autocorrect="off">
           <button class="btn" type="submit" id="hermesBtn">Verbinden</button>
         </form>
         <p class="hnote" id="hermesNote">Verbindet Jarvis mit deinem lokalen Hermes Agent. Dann führt Hermes Befehle auf deinem PC aus.</p>
@@ -275,7 +281,7 @@
         <div class="ptitle">J.A.R.V.I.S. Konsole <span class="tag" id="aiTag">Lokal</span></div>
         <div class="log" id="log" aria-live="polite"></div>
         <form class="cmd" id="cmdForm" autocomplete="off">
-          <input id="cmdInput" name="cmd" aria-label="Befehl an Jarvis" placeholder="Frag Jarvis … z. B. „status“ oder „Wie spät ist es?“" maxlength="600">
+          <input id="cmdInput" name="cmd" aria-label="Befehl an Jarvis" autocapitalize="sentences" enterkeyhint="send" placeholder="Frag Jarvis … z. B. „status“ oder „Wie spät ist es?“" maxlength="600">
           <button class="btn" type="button" id="micBtn" aria-pressed="false" title="Sprechen">Mikro</button>
           <button class="btn" type="submit" id="sendBtn">Senden</button>
           <button class="btn stop" type="button" id="stopBtn" hidden>Stopp</button>
@@ -578,10 +584,26 @@
     $("logCount").textContent = ++lines;
     return body;
   }
-  let voice = false;
+  let voice = false, ttsUnlocked = false;
+  function germanVoice() {
+    try { const vs = speechSynthesis.getVoices(); return vs.find((v) => /^de[-_]/i.test(v.lang) && /Anna|Markus|Google|Siri|Petra|Helena/i.test(v.name)) || vs.find((v) => /^de[-_]/i.test(v.lang)) || null; } catch { return null; }
+  }
+  // iOS/Safari erlaubt Sprachausgabe erst nach einer Berührung: beim ersten Tippen eine leere Äußerung sprechen.
+  function unlockTts() {
+    if (ttsUnlocked || !("speechSynthesis" in window)) return;
+    ttsUnlocked = true;
+    try { const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); speechSynthesis.getVoices(); } catch {}
+  }
+  addEventListener("pointerdown", unlockTts, { once: true, passive: true });
+  addEventListener("keydown", unlockTts, { once: true, passive: true });
   function speak(text, force) {
     if (!(voice || force) || !("speechSynthesis" in window)) return;
-    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text.slice(0, 400)); u.lang = "de-DE"; u.rate = 1.02; u.pitch = 0.85; speechSynthesis.speak(u); } catch {}
+    try {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text.slice(0, 400));
+      const v = germanVoice(); if (v) u.voice = v;
+      u.lang = "de-DE"; u.rate = 1.02; u.pitch = 0.85; speechSynthesis.speak(u);
+    } catch {}
   }
   $("voiceBtn").addEventListener("click", (e) => { voice = !voice; e.currentTarget.setAttribute("aria-pressed", voice); if (voice) speak("Stimme aktiviert, Sir."); });
 
@@ -649,7 +671,10 @@
   };
   const newSession = () => "jarvis-hud-" + Date.now().toString(36);
   const hermes = { ok: false, url: "", key: "", session: newSession(), turns: [], runId: null };
-  const inArtifact = location.protocol === "https:" && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+  const inArtifact = !!(window.claude && window.claude.use) || location.protocol === "file:";
+  const isLocalhost = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+  // Standard: über den eigenen HUD-Server (serve.py leitet /hermes an Hermes weiter). So klappt es auch vom iPad.
+  const defaultHermesUrl = inArtifact ? "http://127.0.0.1:8642" : location.origin + "/hermes";
   const HERMES_RULES = "Du sprichst als J.A.R.V.I.S. über ein Iron-Man-HUD mit dem Nutzer. Antworte auf Deutsch, knapp (meist 1–3 Sätze, die Antwort wird oft vorgelesen), höflich-trocken, gelegentlich mit \"Sir\". Kein Markdown in der Schlussantwort. Nutze deine Werkzeuge (Terminal, Dateien, Browser, Web) auf dem PC des Nutzers, wenn er dich um eine Aktion bittet, und sag danach kurz, was du getan hast.";
   const APPROVAL_LABELS = { once: "Einmal erlauben", session: "Für diese Sitzung", always: "Immer erlauben", deny: "Ablehnen" };
 
@@ -694,7 +719,9 @@
       hermes.ok = false;
       const hint = e.hint || (inArtifact
         ? "In der claude.ai-Vorschau blockiert der Browser Verbindungen zu deinem PC. Starte die lokale Version mit <code>start-jarvis</code>."
-        : "Keine Verbindung. Läuft <code>hermes gateway</code>? Steht <code>" + location.origin + "</code> in <code>API_SERVER_CORS_ORIGINS</code>?");
+        : hermes.url.startsWith(location.origin)
+          ? "Keine Verbindung. Läuft auf dem PC <code>hermes gateway</code>" + (isLocalhost ? "" : " und <code>start-jarvis</code>") + "?"
+          : "Keine Verbindung. Läuft <code>hermes gateway</code>? Steht <code>" + location.origin + "</code> in <code>API_SERVER_CORS_ORIGINS</code>?");
       setHermesState(silent ? "off" : "bad", hint);
     }
   }
@@ -809,7 +836,7 @@
 
   /* ---------- Spracheingabe ---------- */
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) $("micBtn").hidden = true;
+  if (!SR || !window.isSecureContext) $("micBtn").hidden = true;
   let rec = null;
   $("micBtn").addEventListener("click", () => {
     if (rec) { rec.stop(); return; }
@@ -825,7 +852,7 @@
       input.value = finalText || interim;
     };
     rec.onerror = (e) => {
-      const m = { "not-allowed": "Mikrofon-Zugriff verweigert. Erlaube ihn in der Adressleiste.", "no-speech": "Nichts gehört.", network: "Spracherkennung braucht eine Internetverbindung." }[e.error] || "Spracherkennung: " + e.error;
+      const m = { "not-allowed": "Mikrofon-Zugriff verweigert. Erlaube ihn in der Adressleiste bzw. unter Einstellungen → Safari → Mikrofon.", "service-not-allowed": "Spracherkennung nicht erlaubt. Auf dem iPad: Einstellungen → Allgemein → Tastatur → Diktieren aktivieren.", "audio-capture": "Kein Mikrofon gefunden.", "no-speech": "Nichts gehört.", network: "Spracherkennung braucht eine Internetverbindung." }[e.error] || "Spracherkennung: " + e.error;
       say("err", "SYS", m);
     };
     rec.onend = () => {
@@ -851,7 +878,7 @@
   addEventListener("resize", () => { drawGrid(); layoutLaunch(); });
   say("sys", "", "Hochfahren … Arc-Reaktor stabil. Anzeigen für CPU, RAM, Netz und Wetter sind simuliert.");
   const savedUrl = store.get("jarvis.hermesUrl"), savedKey = store.get("jarvis.hermesKey");
-  if (savedUrl) $("hermesUrl").value = savedUrl;
+  $("hermesUrl").value = savedUrl || defaultHermesUrl;
   if (savedKey) { $("hermesKey").value = savedKey; connectHermes(true); }
   else if (inArtifact) $("hermesNote").innerHTML = "In der claude.ai-Vorschau kann der Browser deinen PC nicht erreichen. Für Hermes die lokale Version mit <code>start-jarvis</code> öffnen.";
   say("ai", "JARVIS", "Guten " + (new Date().getHours() < 11 ? "Morgen" : new Date().getHours() < 18 ? "Tag" : "Abend") + ", Sir. Alle Systeme online. Tippe „hilfe“ für Befehle.");

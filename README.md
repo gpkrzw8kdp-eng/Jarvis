@@ -49,25 +49,32 @@ Denk dir einen eigenen, langen Schlüssel aus:
 ```bash
 API_SERVER_ENABLED=true
 API_SERVER_KEY=hier-einen-langen-geheimen-schluessel-eintragen
-API_SERVER_CORS_ORIGINS=http://localhost:8765,http://127.0.0.1:8765
 ```
 
-`API_SERVER_CORS_ORIGINS` erlaubt dem HUD im Browser, mit Hermes zu sprechen.
-Der Server bleibt standardmäßig nur auf deinem PC erreichbar (`127.0.0.1:8642`).
+Der Server bleibt nur auf deinem PC erreichbar (`127.0.0.1:8642`). Das HUD
+spricht über seinen eigenen Server (`serve.py`) mit Hermes, deshalb ist keine
+CORS-Einstellung nötig.
 
 ### 3. Starten
 
 - **Windows:** Doppelklick auf `start-jarvis.bat`
 - **Linux/macOS:** `./start-jarvis.sh`
 
-Das Skript liefert das HUD unter <http://localhost:8765> aus und öffnet den
-Browser. Unter Windows nutzt es das Python von Hermes, Linux/macOS brauchen Python 3.
-Läuft der Hermes-API-Server nicht, sagt es dir, was fehlt. Nach Änderungen an der
-`.env` startest du das Gateway mit `hermes gateway restart` neu.
+Das Skript startet `serve.py`: Es liefert das HUD unter <http://localhost:8765>
+aus und leitet `/hermes` an den Hermes-API-Server weiter. Unter Windows nutzt es
+das Python von Hermes, Linux/macOS brauchen Python 3. Läuft der API-Server
+nicht, sagt es dir, was fehlt. Nach Änderungen an der `.env` startest du das
+Gateway mit `hermes gateway restart` neu.
 
 Im HUD links im Panel **Hermes Agent** den `API_SERVER_KEY` eintragen und auf
 **Verbinden** klicken. Der Schlüssel wird nur in diesem Browser gespeichert.
 **Trennen** löscht ihn wieder.
+
+## Vom iPad: das HUD mit Sprache
+
+Das komplette HUD läuft auch auf dem iPad, inklusive Mikrofon und Vorlesen.
+Dafür braucht es eine verschlüsselte Verbindung zu deinem PC. Die Anleitung mit
+Tailscale steht in [`IPAD.md`](IPAD.md).
 
 ## Vom iPad oder Handy: Jarvis über Discord
 
